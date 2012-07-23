@@ -23,25 +23,28 @@
 -export([init/1, handle_call/2, handle_event/2, handle_info/2, terminate/2,
         code_change/3]).
 
--record(state, {level}).
+-record(state, {level, verbose}).
 
 -include_lib("lager/include/lager.hrl").
 
 %% @private
 init([Ident, Facility, Level]) ->
+    init([Ident, Facility, Level, true]);
+
+init([Ident, Facility, Level, Verbose]) ->
     case application:start(syslog) of
         ok ->
-            init2(Ident, Facility, Level);
+            init2(Ident, Facility, Level, Verbose);
         {error, {already_started, _}} ->
-            init2(Ident, Facility, Level);
+            init2(Ident, Facility, Level, Verbose);
         Error ->
             Error
     end.
 
-init2(Ident, Facility, Level) ->
+init2(Ident, Facility, Level, Verbose) ->
     case syslog:open(Ident, [pid], Facility) of
         ok ->
-            {ok, #state{level=lager_util:level_to_num(Level)}};
+            {ok, #state{level=lager_util:level_to_num(Level), verbose=Verbose}};
         Error ->
             Error
     end.
@@ -55,8 +58,13 @@ handle_call(_Request, State) ->
     {ok, ok, State}.
 
 %% @private
-handle_event({log, Level, {_Date, _Time}, [_LevelStr, Location, Message]}, State) ->
-    syslog:log(convert_level(Level), [Location, Message]),
+handle_event({log, Level, {_Date, _Time}, [_LevelStr, Location, Message]}, State = #state{verbose = Verbose}) ->
+    case Verbose of
+        true ->
+            syslog:log(convert_level(Level), [Location, Message]);
+        _ ->
+            syslog:log(convert_level(Level), [Message])
+    end,
     {ok, State};
 handle_event(_Event, State) ->
     {ok, State}.
